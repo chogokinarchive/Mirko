@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import L from "leaflet";
 import { ParkingSpot } from "@/lib/overpass";
 import { estimateOccupancy } from "@/lib/occupancy";
 
@@ -43,11 +44,7 @@ function OccupancyMeter({ spot }: { spot: ParkingSpot }) {
         <span style={{ fontSize: "12px", fontWeight: "700", color: "#374151", textTransform: "uppercase", letterSpacing: "0.4px" }}>
           Stima occupazione
         </span>
-        <span style={{
-          fontSize: "11px",
-          color: occ.confidence === "medium" ? "#64748b" : "#94a3b8",
-          fontStyle: "italic",
-        }}>
+        <span style={{ fontSize: "11px", color: "#94a3b8", fontStyle: "italic" }}>
           {occ.confidence === "medium" ? "stima media" : "stima approssimativa"}
         </span>
       </div>
@@ -98,10 +95,8 @@ function OccupancyMeter({ spot }: { spot: ParkingSpot }) {
         }}
       >
         <span>Dettagli calcolo statistico</span>
-        <svg
-          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
-          style={{ transform: showBreakdown ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
-        >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          style={{ transform: showBreakdown ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
@@ -147,39 +142,110 @@ function OccupancyMeter({ spot }: { spot: ParkingSpot }) {
   );
 }
 
+function MiniMap({ spot }: { spot: ParkingSpot }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+
+    const map = L.map(containerRef.current, {
+      center: [spot.lat, spot.lng],
+      zoom: 17,
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+    }).addTo(map);
+
+    const color = spot.fee === "free" ? "#16a34a" : spot.fee === "paid" ? "#d97706" : "#64748b";
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="width:28px;height:28px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+    });
+
+    L.marker([spot.lat, spot.lng], { icon }).addTo(map);
+
+    L.circle([spot.lat, spot.lng], {
+      radius: 30,
+      color,
+      fillColor: color,
+      fillOpacity: 0.12,
+      weight: 1.5,
+    }).addTo(map);
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [spot.lat, spot.lng, spot.fee]);
+
+  return (
+    <div style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid #e2e8f0" }}>
+      <div style={{
+        padding: "5px 10px",
+        background: "#f8fafc",
+        fontSize: "10px",
+        color: "#64748b",
+        fontWeight: "600",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderBottom: "1px solid #e2e8f0",
+      }}>
+        <span>📍 Posizione sulla mappa</span>
+        <span style={{ fontFamily: "monospace", color: "#94a3b8" }}>{spot.lat.toFixed(4)}, {spot.lng.toFixed(4)}</span>
+      </div>
+      <div ref={containerRef} style={{ height: "200px", width: "100%" }} />
+    </div>
+  );
+}
+
 function StreetViewSection({ spot }: { spot: ParkingSpot }) {
-  const [showMap, setShowMap] = useState(false);
+  const [showMini, setShowMini] = useState(false);
 
   const googleSVUrl = `https://maps.google.com/maps?layer=c&cbll=${spot.lat},${spot.lng}&cbp=12,0,0,0,0&z=17`;
-  const mapillaryUrl = `https://www.mapillary.com/app/?lat=${spot.lat}&lng=${spot.lng}&z=18`;
+  const mapillaryExtUrl = `https://www.mapillary.com/app/?lat=${spot.lat}&lng=${spot.lng}&z=18`;
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
         <button
-          onClick={() => setShowMap(!showMap)}
+          onClick={() => setShowMini(!showMini)}
           style={{
-            flex: 1,
-            padding: "9px 12px",
+            padding: "9px 10px",
             borderRadius: "10px",
-            background: showMap ? "#1e40af" : "#2563eb",
+            background: showMini ? "#1e40af" : "#2563eb",
             color: "white",
             border: "none",
             fontWeight: "600",
-            fontSize: "13px",
+            fontSize: "12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: "6px",
+            gap: "5px",
           }}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            <path d="M2 12h20"/>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M3 9h18M9 21V9"/>
           </svg>
-          {showMap ? "Nascondi mappa" : "Mappa Mapillary"}
+          {showMini ? "Nascondi mappa" : "Vedi mappa"}
         </button>
 
         <a
@@ -187,55 +253,60 @@ function StreetViewSection({ spot }: { spot: ParkingSpot }) {
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            flex: 1,
-            padding: "9px 12px",
+            padding: "9px 10px",
             borderRadius: "10px",
             background: "#f0fdf4",
             color: "#15803d",
             border: "1.5px solid #bbf7d0",
             fontWeight: "600",
-            fontSize: "13px",
+            fontSize: "12px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: "6px",
+            gap: "5px",
             textDecoration: "none",
           }}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
             <circle cx="12" cy="10" r="3"/>
           </svg>
-          Street View
+          Google Street View
         </a>
       </div>
 
-      {showMap && (
-        <div style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid #e2e8f0" }}>
-          <div style={{
-            padding: "6px 10px",
-            background: "#eff6ff",
-            fontSize: "10px",
-            color: "#3b82f6",
-            fontWeight: "600",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}>
-            <span>📸 Foto di strada (Mapillary)</span>
-            <a href={mapillaryUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#3b82f6", textDecoration: "none" }}>
-              Apri in piena schermata ↗
-            </a>
-          </div>
-          <iframe
-            src={mapillaryUrl}
-            title="Street View Mapillary"
-            style={{ width: "100%", height: "220px", border: "none", display: "block" }}
-            loading="lazy"
-          />
-        </div>
-      )}
+      <a
+        href={mapillaryExtUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "6px",
+          padding: "8px",
+          borderRadius: "10px",
+          background: "#fefce8",
+          color: "#854d0e",
+          border: "1.5px solid #fde68a",
+          fontWeight: "600",
+          fontSize: "12px",
+          textDecoration: "none",
+          marginBottom: "10px",
+          boxSizing: "border-box",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          <path d="M2 12h20"/>
+        </svg>
+        Apri foto di strada su Mapillary ↗
+      </a>
+
+      {showMini && <MiniMap spot={spot} />}
     </div>
   );
 }
@@ -244,7 +315,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
       <span style={{ fontSize: "12px", color: "#64748b" }}>{label}</span>
-      <span style={{ fontSize: "12px", fontWeight: "600", color: "#1e293b" }}>{value}</span>
+      <span style={{ fontSize: "12px", fontWeight: "600", color: "#1e293b", textAlign: "right", maxWidth: "60%", wordBreak: "break-word" }}>{value}</span>
     </div>
   );
 }
@@ -282,12 +353,12 @@ export function SpotDetailPanel({ spot, onClose }: Props) {
       }}>
         <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid #f1f5f9", position: "sticky", top: 0, background: "white", zIndex: 10 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
                 <Tag label={feeInfo[0]} cls={feeInfo[1]} />
                 {availInfo && <Tag label={availInfo[0]} cls={availInfo[1]} />}
               </div>
-              <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", lineHeight: "1.3" }}>{spot.name}</h2>
+              <h2 style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", lineHeight: "1.3", wordBreak: "break-word" }}>{spot.name}</h2>
               <p style={{ fontSize: "11px", color: "#94a3b8", marginTop: "3px" }}>
                 {spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}
               </p>

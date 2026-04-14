@@ -228,16 +228,17 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", gap: "6px" }}>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddressSearch()}
-                  placeholder="Inserisci un indirizzo o città..."
+                  placeholder="Indirizzo o città..."
                   style={{
                     flex: 1,
-                    padding: "9px 12px",
+                    minWidth: 0,
+                    padding: "9px 10px",
                     borderRadius: "10px",
                     border: "1.5px solid #e2e8f0",
                     fontSize: "14px",
@@ -251,8 +252,9 @@ export default function App() {
                 <button
                   onClick={handleAddressSearch}
                   disabled={isLoading || !query.trim()}
+                  title="Cerca"
                   style={{
-                    padding: "9px 14px",
+                    padding: "9px 12px",
                     borderRadius: "10px",
                     background: "#2563eb",
                     color: "white",
@@ -263,16 +265,14 @@ export default function App() {
                     opacity: isLoading || !query.trim() ? 0.6 : 1,
                     display: "flex",
                     alignItems: "center",
-                    gap: "5px",
-                    whiteSpace: "nowrap",
+                    flexShrink: 0,
                   }}
                 >
                   {isLoading ? <LoadingSpinner /> : (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
                     </svg>
                   )}
-                  Cerca
                 </button>
                 <button
                   onClick={handleGPS}
@@ -287,6 +287,7 @@ export default function App() {
                     cursor: isLoading ? "not-allowed" : "pointer",
                     display: "flex",
                     alignItems: "center",
+                    flexShrink: 0,
                     opacity: isLoading ? 0.6 : 1,
                   }}
                 >
