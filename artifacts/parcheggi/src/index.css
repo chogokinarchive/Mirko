@@ -117,3 +117,13 @@
   font-weight: 500;
   color: #334155;
 }
+
+.parking-popup .avail-open {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.parking-popup .avail-closed {
+  color: #dc2626;
+  font-weight: 600;
+}

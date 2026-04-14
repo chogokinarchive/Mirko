@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import { ParkingSpot } from "@/lib/overpass";
 
@@ -9,30 +9,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const FREE_ICON = L.divIcon({
-  className: "",
-  html: `<div style="width:28px;height:28px;background:#16a34a;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
-  popupAnchor: [0, -30],
-});
-
-const PAID_ICON = L.divIcon({
-  className: "",
-  html: `<div style="width:28px;height:28px;background:#d97706;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
-  popupAnchor: [0, -30],
-});
-
-const UNKNOWN_ICON = L.divIcon({
-  className: "",
-  html: `<div style="width:28px;height:28px;background:#64748b;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
-  popupAnchor: [0, -30],
-});
-
 const CENTER_ICON = L.divIcon({
   className: "",
   html: `<div style="width:20px;height:20px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(59,130,246,0.6)"></div>`,
@@ -40,17 +16,49 @@ const CENTER_ICON = L.divIcon({
   iconAnchor: [10, 10],
 });
 
+function availBadge(available: "open" | "closed" | "unknown"): string {
+  if (available === "open")
+    return `<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;background:#22c55e;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+  if (available === "closed")
+    return `<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;background:#ef4444;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+  return "";
+}
+
+function makeIcon(fee: "free" | "paid" | "unknown", available: "open" | "closed" | "unknown"): L.DivIcon {
+  const color = fee === "free" ? "#16a34a" : fee === "paid" ? "#d97706" : "#64748b";
+  const badge = availBadge(available);
+  return L.divIcon({
+    className: "",
+    html: `<div style="position:relative;width:32px;height:32px">
+      <div style="width:28px;height:28px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);position:absolute;top:2px;left:2px"></div>
+      ${badge}
+    </div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -34],
+  });
+}
+
 function feeLabel(fee: "free" | "paid" | "unknown") {
   if (fee === "free") return ["Gratuito", "tag-free"];
   if (fee === "paid") return ["A pagamento", "tag-paid"];
   return ["Info non disponibile", "tag-unknown"];
 }
 
+function availLabel(available: "open" | "closed" | "unknown", oh?: string): string {
+  if (available === "open")
+    return `<div class="detail avail-open">● Attualmente aperto${oh ? ` <span style="font-weight:400;color:#64748b">(${oh})</span>` : ""}</div>`;
+  if (available === "closed")
+    return `<div class="detail avail-closed">● Attualmente chiuso${oh ? ` <span style="font-weight:400;color:#64748b">(${oh})</span>` : ""}</div>`;
+  return oh ? `<div class="detail">Orari: <span>${oh}</span></div>` : "";
+}
+
 function buildPopup(spot: ParkingSpot) {
   const [label, cls] = feeLabel(spot.fee);
   const details = [
+    availLabel(spot.available, spot.opening_hours),
     spot.capacity ? `<div class="detail">Capacità: <span>${spot.capacity} posti</span></div>` : "",
-    spot.access && spot.access !== "yes" ? `<div class="detail">Accesso: <span>${spot.access}</span></div>` : "",
+    spot.access && spot.access !== "yes" && spot.access !== "" ? `<div class="detail">Accesso: <span>${spot.access}</span></div>` : "",
     spot.surface ? `<div class="detail">Superficie: <span>${spot.surface}</span></div>` : "",
     spot.maxstay ? `<div class="detail">Tempo max: <span>${spot.maxstay}</span></div>` : "",
     spot.operator ? `<div class="detail">Gestore: <span>${spot.operator}</span></div>` : "",
@@ -118,12 +126,8 @@ export function ParkingMap({ center, spots, filter, onMapClick }: ParkingMapProp
 
     map.setView([center.lat, center.lng], 15, { animate: true });
 
-    if (centerMarkerRef.current) {
-      centerMarkerRef.current.remove();
-    }
-    if (circleRef.current) {
-      circleRef.current.remove();
-    }
+    if (centerMarkerRef.current) centerMarkerRef.current.remove();
+    if (circleRef.current) circleRef.current.remove();
 
     centerMarkerRef.current = L.marker([center.lat, center.lng], { icon: CENTER_ICON })
       .addTo(map)
@@ -154,8 +158,7 @@ export function ParkingMap({ center, spots, filter, onMapClick }: ParkingMapProp
     });
 
     for (const spot of filtered) {
-      const icon =
-        spot.fee === "free" ? FREE_ICON : spot.fee === "paid" ? PAID_ICON : UNKNOWN_ICON;
+      const icon = makeIcon(spot.fee, spot.available);
       const marker = L.marker([spot.lat, spot.lng], { icon })
         .addTo(map)
         .bindPopup(buildPopup(spot), { maxWidth: 280 });

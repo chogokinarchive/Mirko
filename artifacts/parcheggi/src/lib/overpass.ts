@@ -4,11 +4,13 @@ export interface ParkingSpot {
   lng: number;
   name: string;
   fee: "free" | "paid" | "unknown";
+  available: "open" | "closed" | "unknown";
   capacity?: string;
   access?: string;
   surface?: string;
   maxstay?: string;
   operator?: string;
+  opening_hours?: string;
   type: "node" | "way" | "relation";
 }
 
@@ -27,6 +29,68 @@ function parseName(tags: Record<string, string>, id: string): string {
     tags["brand"] ||
     `Parcheggio #${id.slice(-4)}`
   );
+}
+
+const DAYS: Record<string, number> = {
+  Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6, Su: 0,
+};
+
+function parseTime(s: string): number {
+  const [h, m] = s.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function dayRange(from: string, to: string): number[] {
+  const start = DAYS[from];
+  const end = DAYS[to];
+  if (start === undefined || end === undefined) return [];
+  const days: number[] = [];
+  let cur = start;
+  while (cur !== end) {
+    days.push(cur);
+    cur = (cur + 1) % 7;
+  }
+  days.push(end);
+  return days;
+}
+
+export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
+  if (!oh) return "unknown";
+  const raw = oh.trim().toLowerCase();
+
+  if (raw === "24/7" || raw === "00:00-24:00" || raw === "always") return "open";
+  if (raw === "closed" || raw === "off") return "closed";
+
+  const now = new Date();
+  const nowDay = now.getDay();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const rules = oh.split(";").map((r) => r.trim());
+
+  for (const rule of rules) {
+    const allDayMatch = rule.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?\s+(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+off)?/);
+    if (allDayMatch) {
+      const [, fromDay, toDay, fromTime, toTime] = allDayMatch;
+      const isOff = rule.includes(" off");
+      const days = toDay ? dayRange(fromDay, toDay) : [DAYS[fromDay]];
+      if (!days.includes(nowDay)) continue;
+      const start = parseTime(fromTime);
+      const end = parseTime(toTime);
+      if (nowMin >= start && nowMin < end) {
+        return isOff ? "closed" : "open";
+      }
+      continue;
+    }
+
+    const timeOnly = rule.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    if (timeOnly) {
+      const start = parseTime(timeOnly[1]);
+      const end = parseTime(timeOnly[2]);
+      if (nowMin >= start && nowMin < end) return "open";
+    }
+  }
+
+  return "unknown";
 }
 
 export async function searchParkings(
@@ -55,7 +119,6 @@ out center tags;
   }
 
   const data = await response.json();
-
   const spots: ParkingSpot[] = [];
 
   for (const element of data.elements) {
@@ -73,6 +136,11 @@ out center tags;
     if (elLat === undefined || elLng === undefined) continue;
 
     const tags: Record<string, string> = element.tags || {};
+    const oh = tags["opening_hours"] || tags["parking:opening_hours"] || "";
+    const access = tags["access"] || "";
+
+    let available: "open" | "closed" | "unknown" = parseOpeningHours(oh);
+    if (access === "private" || access === "no") available = "closed";
 
     spots.push({
       id: `${element.type}_${element.id}`,
@@ -80,11 +148,13 @@ out center tags;
       lng: elLng,
       name: parseName(tags, String(element.id)),
       fee: parseFee(tags),
+      available,
       capacity: tags["capacity"],
-      access: tags["access"],
+      access,
       surface: tags["surface"],
       maxstay: tags["maxstay"],
       operator: tags["operator"],
+      opening_hours: oh || undefined,
       type: element.type,
     });
   }
@@ -92,7 +162,9 @@ out center tags;
   return spots;
 }
 
-export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number; display: string } | null> {
+export async function geocodeAddress(
+  address: string
+): Promise<{ lat: number; lng: number; display: string } | null> {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
   const response = await fetch(url, {
     headers: { "Accept-Language": "it", "User-Agent": "ParcheggiApp/1.0" },
