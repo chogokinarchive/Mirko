@@ -383,6 +383,56 @@ export function SpotDetailPanel({ spot, onClose }: Props) {
           </div>
         </div>
 
+        <div style={{ padding: "12px 16px 6px", borderBottom: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+          <a
+            href={`https://www.google.com/maps/dir//${spot.lat},${spot.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              padding: "10px 12px",
+              borderRadius: "10px",
+              background: "#1a73e8",
+              color: "white",
+              fontWeight: "700",
+              fontSize: "13px",
+              textDecoration: "none",
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+            </svg>
+            Indicazioni
+          </a>
+          <a
+            href={`https://waze.com/ul?ll=${spot.lat},${spot.lng}&navigate=yes`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              padding: "10px 12px",
+              borderRadius: "10px",
+              background: "#06c167",
+              color: "white",
+              fontWeight: "700",
+              fontSize: "13px",
+              textDecoration: "none",
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="10" r="3"/>
+              <path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 6.9 8 11.7z"/>
+            </svg>
+            Waze
+          </a>
+        </div>
+
         <div style={{ padding: "14px 16px", flex: 1 }}>
           <section style={{ marginBottom: "18px" }}>
             <div style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>

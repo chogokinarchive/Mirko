@@ -1,10 +1,30 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ParkingMap } from "@/components/ParkingMap";
 import { SpotDetailPanel } from "@/components/SpotDetailPanel";
 import { searchParkings, geocodeAddress, ParkingSpot } from "@/lib/overpass";
 import { useGeolocation } from "@/hooks/useGeolocation";
 
 type Filter = "all" | "free" | "paid";
+
+const SESSION_KEY = "parcheggi_state";
+
+function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(data: object) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch {
+    /* ignore */
+  }
+}
 
 function LoadingSpinner() {
   return (
@@ -15,16 +35,22 @@ function LoadingSpinner() {
 }
 
 export default function App() {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
-  const [spots, setSpots] = useState<ParkingSpot[]>([]);
+  const saved = loadSession();
+
+  const [query, setQuery] = useState<string>(saved?.query ?? "");
+  const [filter, setFilter] = useState<Filter>(saved?.filter ?? "all");
+  const [center, setCenter] = useState<{ lat: number; lng: number } | null>(saved?.center ?? null);
+  const [spots, setSpots] = useState<ParkingSpot[]>(saved?.spots ?? []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [searchLabel, setSearchLabel] = useState<string>("");
+  const [statusMsg, setStatusMsg] = useState<string | null>(saved?.statusMsg ?? null);
+  const [collapsed, setCollapsed] = useState<boolean>(saved?.collapsed ?? false);
+  const [searchLabel, setSearchLabel] = useState<string>(saved?.searchLabel ?? "");
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
+
+  useEffect(() => {
+    saveSession({ query, filter, center, spots, statusMsg, collapsed, searchLabel });
+  }, [query, filter, center, spots, statusMsg, collapsed, searchLabel]);
 
   const { getPosition, loading: geoLoading } = useGeolocation();
 
