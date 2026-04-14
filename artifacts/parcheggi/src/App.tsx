@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { ParkingMap } from "@/components/ParkingMap";
+import { SpotDetailPanel } from "@/components/SpotDetailPanel";
 import { searchParkings, geocodeAddress, ParkingSpot } from "@/lib/overpass";
 import { useGeolocation } from "@/hooks/useGeolocation";
 
@@ -23,6 +24,7 @@ export default function App() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [searchLabel, setSearchLabel] = useState<string>("");
+  const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
 
   const { getPosition, loading: geoLoading } = useGeolocation();
 
@@ -90,6 +92,10 @@ export default function App() {
     },
     [doSearch]
   );
+
+  const handleSpotSelect = useCallback((spot: ParkingSpot) => {
+    setSelectedSpot(spot);
+  }, []);
 
   const filteredSpots = spots.filter((s) => {
     if (filter === "all") return true;
@@ -374,8 +380,14 @@ export default function App() {
           spots={spots}
           filter={filter}
           onMapClick={handleMapClick}
+          onSpotSelect={handleSpotSelect}
         />
       </div>
+
+      <SpotDetailPanel
+        spot={selectedSpot}
+        onClose={() => setSelectedSpot(null)}
+      />
 
       <div style={{
         position: "absolute",

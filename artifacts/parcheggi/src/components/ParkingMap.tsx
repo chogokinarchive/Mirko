@@ -29,7 +29,7 @@ function makeIcon(fee: "free" | "paid" | "unknown", available: "open" | "closed"
   const badge = availBadge(available);
   return L.divIcon({
     className: "",
-    html: `<div style="position:relative;width:32px;height:32px">
+    html: `<div style="position:relative;width:32px;height:32px;cursor:pointer">
       <div style="width:28px;height:28px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);position:absolute;top:2px;left:2px"></div>
       ${badge}
     </div>`,
@@ -39,54 +39,23 @@ function makeIcon(fee: "free" | "paid" | "unknown", available: "open" | "closed"
   });
 }
 
-function feeLabel(fee: "free" | "paid" | "unknown") {
-  if (fee === "free") return ["Gratuito", "tag-free"];
-  if (fee === "paid") return ["A pagamento", "tag-paid"];
-  return ["Info non disponibile", "tag-unknown"];
-}
-
-function availLabel(available: "open" | "closed" | "unknown", oh?: string): string {
-  if (available === "open")
-    return `<div class="detail avail-open">● Attualmente aperto${oh ? ` <span style="font-weight:400;color:#64748b">(${oh})</span>` : ""}</div>`;
-  if (available === "closed")
-    return `<div class="detail avail-closed">● Attualmente chiuso${oh ? ` <span style="font-weight:400;color:#64748b">(${oh})</span>` : ""}</div>`;
-  return oh ? `<div class="detail">Orari: <span>${oh}</span></div>` : "";
-}
-
-function buildPopup(spot: ParkingSpot) {
-  const [label, cls] = feeLabel(spot.fee);
-  const details = [
-    availLabel(spot.available, spot.opening_hours),
-    spot.capacity ? `<div class="detail">Capacità: <span>${spot.capacity} posti</span></div>` : "",
-    spot.access && spot.access !== "yes" && spot.access !== "" ? `<div class="detail">Accesso: <span>${spot.access}</span></div>` : "",
-    spot.surface ? `<div class="detail">Superficie: <span>${spot.surface}</span></div>` : "",
-    spot.maxstay ? `<div class="detail">Tempo max: <span>${spot.maxstay}</span></div>` : "",
-    spot.operator ? `<div class="detail">Gestore: <span>${spot.operator}</span></div>` : "",
-  ].join("");
-
-  return `
-    <div class="parking-popup">
-      <h3>${spot.name}</h3>
-      <span class="tag ${cls}">${label}</span>
-      ${details || '<div class="detail">Nessuna informazione aggiuntiva</div>'}
-    </div>
-  `;
-}
-
 interface ParkingMapProps {
   center: { lat: number; lng: number } | null;
   spots: ParkingSpot[];
   filter: "all" | "free" | "paid";
   onMapClick: (lat: number, lng: number) => void;
+  onSpotSelect: (spot: ParkingSpot) => void;
 }
 
-export function ParkingMap({ center, spots, filter, onMapClick }: ParkingMapProps) {
+export function ParkingMap({ center, spots, filter, onMapClick, onSpotSelect }: ParkingMapProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const centerMarkerRef = useRef<L.Marker | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
   const initializedRef = useRef(false);
+  const onSpotSelectRef = useRef(onSpotSelect);
+  onSpotSelectRef.current = onSpotSelect;
 
   const handleMapClick = useCallback(
     (e: L.LeafletMouseEvent) => {
@@ -161,7 +130,13 @@ export function ParkingMap({ center, spots, filter, onMapClick }: ParkingMapProp
       const icon = makeIcon(spot.fee, spot.available);
       const marker = L.marker([spot.lat, spot.lng], { icon })
         .addTo(map)
-        .bindPopup(buildPopup(spot), { maxWidth: 280 });
+        .bindTooltip(spot.name, { permanent: false, direction: "top", offset: [0, -30] });
+
+      marker.on("click", (e) => {
+        L.DomEvent.stopPropagation(e);
+        onSpotSelectRef.current(spot);
+      });
+
       markersRef.current.push(marker);
     }
   }, [spots, filter]);
