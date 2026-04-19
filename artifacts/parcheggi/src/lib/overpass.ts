@@ -165,6 +165,31 @@ out center tags;
   return spots;
 }
 
+export interface GeoSuggestion {
+  display: string;
+  lat: number;
+  lng: number;
+}
+
+export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
+  if (query.trim().length < 3) return [];
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=it`;
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const data = await response.json();
+    if (!data?.features) return [];
+    return data.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => {
+      const [lng, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      const display = [p.name, p.street, p.city, p.country].filter(Boolean).join(", ");
+      return { display, lat, lng };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function geocodeAddress(
   address: string
 ): Promise<{ lat: number; lng: number; display: string } | null> {
