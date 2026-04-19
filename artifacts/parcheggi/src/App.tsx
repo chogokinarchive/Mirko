@@ -393,7 +393,7 @@ export default function App() {
                   })()}
                 </div>
                 <button
-                  onClick={handleAddressSearch}
+                  onClick={() => handleAddressSearch()}
                   disabled={isLoading || !query.trim()}
                   title="Cerca"
                   style={{
