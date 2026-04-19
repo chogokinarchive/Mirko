@@ -168,14 +168,37 @@ out center tags;
 export async function geocodeAddress(
   address: string
 ): Promise<{ lat: number; lng: number; display: string } | null> {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=it`;
-  const response = await fetch(url);
-  if (!response.ok) return null;
-  const data = await response.json();
-  if (!data || !data.features || data.features.length === 0) return null;
-  const feature = data.features[0];
-  const [lng, lat] = feature.geometry.coordinates;
-  const p = feature.properties;
-  const display = [p.name, p.street, p.city, p.country].filter(Boolean).join(", ");
-  return { lat, lng, display };
+  // Try Photon first
+  try {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=it`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.features?.length > 0) {
+        const feature = data.features[0];
+        const [lng, lat] = feature.geometry.coordinates;
+        const p = feature.properties;
+        const display = [p.name, p.street, p.city, p.country].filter(Boolean).join(", ");
+        return { lat, lng, display };
+      }
+    }
+  } catch {
+    // Photon failed, try fallback
+  }
+
+  // Fallback: Nominatim (istanza OSM ufficiale)
+  const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=it`;
+  const fallbackResponse = await fetch(fallbackUrl, {
+    headers: { "User-Agent": "ParcheggiApp/1.0 (contact@parcheggi.app)" },
+  });
+  if (!fallbackResponse.ok) {
+    throw new Error("Servizio di ricerca temporaneamente non disponibile. Riprova tra qualche secondo.");
+  }
+  const fallbackData = await fallbackResponse.json();
+  if (!fallbackData || fallbackData.length === 0) return null;
+  return {
+    lat: parseFloat(fallbackData[0].lat),
+    lng: parseFloat(fallbackData[0].lon),
+    display: fallbackData[0].display_name,
+  };
 }
