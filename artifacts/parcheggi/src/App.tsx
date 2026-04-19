@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { ParkingMap } from "@/components/ParkingMap";
 import { SpotDetailPanel } from "@/components/SpotDetailPanel";
-import { searchParkings, geocodeAddress, ParkingSpot } from "@/lib/overpass";
+import { searchParkings, geocodeAddress, fetchSuggestions, GeoSuggestion, ParkingSpot } from "@/lib/overpass";
 import { useGeolocation } from "@/hooks/useGeolocation";
 
 type Filter = "all" | "free" | "paid";
@@ -48,11 +48,49 @@ export default function App() {
   const [searchLabel, setSearchLabel] = useState<string>(saved?.searchLabel ?? "");
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
 
+  // Autocomplete
+  const [suggestions, setSuggestions] = useState<GeoSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [recentAddresses, setRecentAddresses] = useState<string[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem("recent_addresses") || "[]"); } catch { return []; }
+  });
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     saveSession({ query, filter, center, spots, statusMsg, collapsed, searchLabel });
   }, [query, filter, center, spots, statusMsg, collapsed, searchLabel]);
 
   const { getPosition, loading: geoLoading } = useGeolocation();
+
+  // Debounced autocomplete
+  useEffect(() => {
+    if (query.trim().length < 3) { setSuggestions([]); return; }
+    const timer = setTimeout(async () => {
+      const results = await fetchSuggestions(query);
+      setSuggestions(results);
+      if (results.length > 0) setShowSuggestions(true);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function addToHistory(address: string) {
+    const updated = [address, ...recentAddresses.filter(a => a !== address)].slice(0, 5);
+    setRecentAddresses(updated);
+    try { sessionStorage.setItem("recent_addresses", JSON.stringify(updated)); } catch { /* ignore */ }
+  }
 
   const doSearch = useCallback(async (lat: number, lng: number, label?: string) => {
     setLoading(true);
@@ -81,7 +119,14 @@ export default function App() {
     }
   }, []);
 
-  const handleAddressSearch = useCallback(async () => {
+  const handleAddressSearch = useCallback(async (overrideGeo?: GeoSuggestion) => {
+    setShowSuggestions(false);
+    if (overrideGeo) {
+      addToHistory(overrideGeo.display);
+      setQuery(overrideGeo.display);
+      await doSearch(overrideGeo.lat, overrideGeo.lng, overrideGeo.display);
+      return;
+    }
     const q = query.trim();
     if (!q) return;
     setLoading(true);
@@ -95,13 +140,15 @@ export default function App() {
         setLoading(false);
         return;
       }
+      addToHistory(q);
       await doSearch(geo.lat, geo.lng, geo.display);
     } catch {
       setError("Errore nella ricerca dell'indirizzo.");
       setStatusMsg(null);
       setLoading(false);
     }
-  }, [query, doSearch]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, doSearch, recentAddresses]);
 
   const handleGPS = useCallback(async () => {
     try {
@@ -254,27 +301,97 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddressSearch()}
-                  placeholder="Indirizzo o città..."
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    padding: "9px 10px",
-                    borderRadius: "10px",
-                    border: "1.5px solid #e2e8f0",
-                    fontSize: "14px",
-                    outline: "none",
-                    color: "#1e293b",
-                    transition: "border-color 0.15s",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
-                />
+              <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
+                    onFocus={() => { if (query.trim().length < 3 && recentAddresses.length > 0) setShowSuggestions(true); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddressSearch();
+                      if (e.key === "Escape") setShowSuggestions(false);
+                    }}
+                    placeholder="Indirizzo o città..."
+                    style={{
+                      width: "100%",
+                      padding: "9px 10px",
+                      borderRadius: "10px",
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "14px",
+                      outline: "none",
+                      color: "#1e293b",
+                      transition: "border-color 0.15s",
+                      boxSizing: "border-box",
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = "#3b82f6";
+                      if (query.trim().length < 3 && recentAddresses.length > 0) setShowSuggestions(true);
+                    }}
+                    onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
+                  />
+                  {/* Dropdown autocomplete / storico */}
+                  {showSuggestions && (() => {
+                    const isHistoryMode = query.trim().length < 3;
+                    const items = isHistoryMode
+                      ? recentAddresses.map(addr => ({ label: addr, isHistory: true as const }))
+                      : suggestions.map(s => {
+                          const parts = s.display.split(", ");
+                          return { label: parts[0], sublabel: parts.slice(1).join(", "), geo: s, isHistory: false as const };
+                        });
+                    if (items.length === 0) return null;
+                    return (
+                      <div ref={dropdownRef} style={{
+                        position: "absolute", top: "calc(100% + 2px)", left: 0, right: 0,
+                        background: "white", border: "1.5px solid #3b82f6",
+                        borderRadius: "10px", zIndex: 9999,
+                        boxShadow: "0 8px 20px rgba(0,0,0,0.13)", overflow: "hidden",
+                      }}>
+                        {isHistoryMode && (
+                          <div style={{ padding: "6px 12px 4px", fontSize: "10px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            Ricerche recenti
+                          </div>
+                        )}
+                        {items.map((item, i) => (
+                          <div key={i}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              if (!item.isHistory && item.geo) {
+                                handleAddressSearch(item.geo);
+                              } else {
+                                setQuery(item.label);
+                                setShowSuggestions(false);
+                                setTimeout(() => handleAddressSearch(), 0);
+                              }
+                            }}
+                            style={{
+                              padding: "9px 12px", cursor: "pointer",
+                              borderTop: i > 0 || isHistoryMode ? "1px solid #f1f5f9" : "none",
+                              display: "flex", alignItems: "center", gap: "8px",
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "#f0f7ff")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "white")}
+                          >
+                            <span style={{ fontSize: "13px", flexShrink: 0 }}>
+                              {item.isHistory ? "🕐" : "📍"}
+                            </span>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {item.label}
+                              </div>
+                              {!item.isHistory && "sublabel" in item && item.sublabel && (
+                                <div style={{ fontSize: "11px", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {item.sublabel}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
                 <button
                   onClick={handleAddressSearch}
                   disabled={isLoading || !query.trim()}
