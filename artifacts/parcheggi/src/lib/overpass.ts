@@ -220,37 +220,29 @@ export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> 
   } catch { return []; }
 }
 
-const GEOCODE_ENDPOINTS = [
-  async (address: string) => {
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=it`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!d?.features?.length) return null;
-    const [lng, lat] = d.features[0].geometry.coordinates;
-    const p = d.features[0].properties;
-    return { lat, lng, display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", ") };
-  },
-  async (address: string) => {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=it`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!d?.length) return null;
-    return { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon), display: d[0].display_name };
-  },
-];
+export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
+  if (query.trim().length < 3) return [];
+  try {
+    const r = await fetch(`/api/geocode?q=${encodeURIComponent(query)}&limit=5`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return [];
+    const data = await r.json();
+    if (!data?.features?.length) return [];
+    return data.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => {
+      const [lng, lat] = f.geometry.coordinates;
+      const p = f.properties;
+      return { display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", "), lat, lng };
+    });
+  } catch { return []; }
+}
 
 export async function geocodeAddress(
   address: string
 ): Promise<{ lat: number; lng: number; display: string } | null> {
-  for (const fn of GEOCODE_ENDPOINTS) {
-    try {
-      const result = await fn(address);
-      if (result) return result;
-    } catch {
-      continue;
-    }
-  }
-  throw new Error("Indirizzo non trovato su nessun servizio. Riprova.");
+  const r = await fetch(`/api/geocode?q=${encodeURIComponent(address)}&limit=1`, { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error("Servizio di ricerca non disponibile. Riprova.");
+  const data = await r.json();
+  if (!data?.features?.length) return null;
+  const [lng, lat] = data.features[0].geometry.coordinates;
+  const p = data.features[0].properties;
+  return { lat, lng, display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", ") };
 }
