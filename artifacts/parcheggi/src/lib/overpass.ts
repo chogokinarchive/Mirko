@@ -108,36 +108,19 @@ export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
   return "unknown";
 }
 
-const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-];
-
 async function fetchOverpass(overpassQuery: string): Promise<Response> {
-  let lastError: Error = new Error("Tutti i server non sono raggiungibili.");
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(overpassQuery)}`,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (response.ok) return response;
-      if (response.status === 429 || response.status === 503) {
-        lastError = new Error("Servizi sovraccarichi, riprova tra qualche secondo.");
-        continue;
-      }
-      lastError = new Error(`Errore server: ${response.status}`);
-    } catch {
-      lastError = new Error("Connessione al servizio fallita.");
-    }
+  // Usa il proxy Vercel per evitare problemi CORS
+  const response = await fetch("/api/overpass", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: overpassQuery }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: `Errore server: ${response.status}` }));
+    throw new Error(err.error || "Errore nel recupero dei dati.");
   }
-  throw lastError;
+  return response;
 }
 
 export async function searchParkings(
