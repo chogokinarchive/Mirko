@@ -12,6 +12,8 @@ export interface ParkingSpot {
   operator?: string;
   opening_hours?: string;
   type: "node" | "way" | "relation";
+  disabled: boolean;
+  capacity_disabled?: string;
 }
 
 function parseFee(tags: Record<string, string>): "free" | "paid" | "unknown" {
@@ -29,6 +31,19 @@ function parseName(tags: Record<string, string>, id: string): string {
     tags["brand"] ||
     `Parcheggio #${id.slice(-4)}`
   );
+}
+
+
+function parseDisabled(tags: Record<string, string>): boolean {
+  // Dedicated disabled parking spot
+  if (tags["amenity"] === "parking" && tags["access"] === "disabled") return true;
+  if (tags["parking"] === "disabled") return true;
+  // Has disabled capacity
+  const cap = tags["capacity:disabled"] || tags["disabled:capacity"] || tags["capacity:handicapped"];
+  if (cap && cap !== "0") return true;
+  // Wheelchair accessible tag
+  if (tags["wheelchair"] === "yes" || tags["wheelchair"] === "designated") return true;
+  return false;
 }
 
 const DAYS: Record<string, number> = {
@@ -93,6 +108,38 @@ export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
   return "unknown";
 }
 
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+
+async function fetchOverpass(overpassQuery: string): Promise<Response> {
+  let lastError: Error = new Error("Tutti i server non sono raggiungibili.");
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (response.ok) return response;
+      if (response.status === 429 || response.status === 503) {
+        lastError = new Error("Servizi sovraccarichi, riprova tra qualche secondo.");
+        continue;
+      }
+      lastError = new Error(`Errore server: ${response.status}`);
+    } catch {
+      lastError = new Error("Connessione al servizio fallita.");
+    }
+  }
+  throw lastError;
+}
+
 export async function searchParkings(
   lat: number,
   lng: number,
@@ -108,19 +155,7 @@ export async function searchParkings(
 out center tags;
 `;
 
-  const response = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-
-  if (!response.ok) {
-    if (response.status === 429 || response.status === 503) {
-      throw new Error("Servizio sovraccarico, riprova tra qualche secondo.");
-    }
-    throw new Error(`Errore Overpass: ${response.status}`);
-  }
-
+  const response = await fetchOverpass(query);
   const data = await response.json();
   const spots: ParkingSpot[] = [];
 
@@ -159,6 +194,8 @@ out center tags;
       operator: tags["operator"],
       opening_hours: oh || undefined,
       type: element.type,
+      disabled: parseDisabled(tags),
+      capacity_disabled: tags["capacity:disabled"] || tags["disabled:capacity"] || tags["capacity:handicapped"] || undefined,
     });
   }
 
@@ -211,7 +248,7 @@ export async function geocodeAddress(
     // Photon failed, try fallback
   }
 
-  // Fallback: Nominatim (istanza OSM ufficiale)
+  // Fallback: Nominatim
   const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=it`;
   const fallbackResponse = await fetch(fallbackUrl, {
     headers: { "User-Agent": "ParcheggiApp/1.0 (contact@parcheggi.app)" },
