@@ -193,57 +193,64 @@ export interface GeoSuggestion {
 
 export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
   if (query.trim().length < 3) return [];
+  // Try Photon
   try {
     const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=it`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.features?.length) {
+        return data.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => {
+          const [lng, lat] = f.geometry.coordinates;
+          const p = f.properties;
+          return { display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", "), lat, lng };
+        });
+      }
+    }
+  } catch { /* fallback */ }
+  // Fallback: Nominatim
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&accept-language=it`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) return [];
     const data = await response.json();
-    if (!data?.features) return [];
-    return data.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => {
-      const [lng, lat] = f.geometry.coordinates;
-      const p = f.properties;
-      const display = [p.name, p.street, p.city, p.country].filter(Boolean).join(", ");
-      return { display, lat, lng };
-    });
-  } catch {
-    return [];
-  }
+    return (data || []).map((d: { lat: string; lon: string; display_name: string }) => ({
+      lat: parseFloat(d.lat), lng: parseFloat(d.lon), display: d.display_name,
+    }));
+  } catch { return []; }
 }
+
+const GEOCODE_ENDPOINTS = [
+  async (address: string) => {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=it`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d?.features?.length) return null;
+    const [lng, lat] = d.features[0].geometry.coordinates;
+    const p = d.features[0].properties;
+    return { lat, lng, display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", ") };
+  },
+  async (address: string) => {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=it`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d?.length) return null;
+    return { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon), display: d[0].display_name };
+  },
+];
 
 export async function geocodeAddress(
   address: string
 ): Promise<{ lat: number; lng: number; display: string } | null> {
-  // Try Photon first
-  try {
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1&lang=it`;
-    const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.features?.length > 0) {
-        const feature = data.features[0];
-        const [lng, lat] = feature.geometry.coordinates;
-        const p = feature.properties;
-        const display = [p.name, p.street, p.city, p.country].filter(Boolean).join(", ");
-        return { lat, lng, display };
-      }
+  for (const fn of GEOCODE_ENDPOINTS) {
+    try {
+      const result = await fn(address);
+      if (result) return result;
+    } catch {
+      continue;
     }
-  } catch {
-    // Photon failed, try fallback
   }
-
-  // Fallback: Nominatim
-  const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&accept-language=it`;
-  const fallbackResponse = await fetch(fallbackUrl, {
-    headers: { "User-Agent": "ParcheggiApp/1.0 (contact@parcheggi.app)" },
-  });
-  if (!fallbackResponse.ok) {
-    throw new Error("Servizio di ricerca temporaneamente non disponibile. Riprova tra qualche secondo.");
-  }
-  const fallbackData = await fallbackResponse.json();
-  if (!fallbackData || fallbackData.length === 0) return null;
-  return {
-    lat: parseFloat(fallbackData[0].lat),
-    lng: parseFloat(fallbackData[0].lon),
-    display: fallbackData[0].display_name,
-  };
+  throw new Error("Indirizzo non trovato su nessun servizio. Riprova.");
 }
