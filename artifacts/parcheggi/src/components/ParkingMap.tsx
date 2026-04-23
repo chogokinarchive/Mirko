@@ -24,14 +24,17 @@ function availBadge(available: "open" | "closed" | "unknown"): string {
   return "";
 }
 
-function makeIcon(fee: "free" | "paid" | "unknown", available: "open" | "closed" | "unknown"): L.DivIcon {
-  const color = fee === "free" ? "#16a34a" : fee === "paid" ? "#d97706" : "#64748b";
+function makeIcon(fee: "free" | "paid" | "unknown", available: "open" | "closed" | "unknown", disabled: boolean): L.DivIcon {
+  const color = disabled ? "#2563eb" : fee === "free" ? "#16a34a" : fee === "paid" ? "#d97706" : "#64748b";
   const badge = availBadge(available);
+  const disabledBadge = disabled
+    ? `<div style="position:absolute;bottom:-4px;left:-4px;width:14px;height:14px;background:#2563eb;border-radius:50%;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1">♿</div>`
+    : "";
   return L.divIcon({
     className: "",
     html: `<div style="position:relative;width:32px;height:32px;cursor:pointer">
       <div style="width:28px;height:28px;background:${color};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);position:absolute;top:2px;left:2px"></div>
-      ${badge}
+      ${badge}${disabledBadge}
     </div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 32],
@@ -127,7 +130,7 @@ export function ParkingMap({ center, spots, filter, onMapClick, onSpotSelect }: 
     });
 
     for (const spot of filtered) {
-      const icon = makeIcon(spot.fee, spot.available);
+      const icon = makeIcon(spot.fee, spot.available, spot.disabled);
       const marker = L.marker([spot.lat, spot.lng], { icon })
         .addTo(map)
         .bindTooltip(spot.name, { permanent: false, direction: "top", offset: [0, -30] });
