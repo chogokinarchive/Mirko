@@ -6,15 +6,27 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.openstreetmap.ru/api/interpreter",
 ];
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "1mb",
+    },
+  },
+};
 
-  const body = req.body;
-  if (!body || !body.data) {
-    return res.status(400).json({ error: "Missing query data" });
-  }
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const queryData = typeof req.body === "string"
+    ? JSON.parse(req.body).data
+    : req.body?.data;
+
+  if (!queryData) return res.status(400).json({ error: "Missing query data" });
 
   let lastError = "Tutti i server Overpass non disponibili.";
 
@@ -23,23 +35,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(body.data)}`,
+        body: `data=${encodeURIComponent(queryData)}`,
         signal: AbortSignal.timeout(25000),
       });
 
       if (response.ok) {
         const data = await response.json();
-        res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Cache-Control", "s-maxage=60");
         return res.status(200).json(data);
       }
 
-      if (response.status === 429 || response.status === 503) {
-        lastError = "Servizi sovraccarichi, riprova tra qualche secondo.";
-        continue;
-      }
-
-      lastError = `Errore server: ${response.status}`;
+      lastError = response.status === 429 || response.status === 503
+        ? "Servizi sovraccarichi, riprova tra qualche secondo."
+        : `Errore server: ${response.status}`;
     } catch {
       lastError = "Connessione al servizio fallita.";
     }
