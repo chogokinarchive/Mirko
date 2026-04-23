@@ -4,7 +4,7 @@ import { SpotDetailPanel } from "@/components/SpotDetailPanel";
 import { searchParkings, geocodeAddress, fetchSuggestions, GeoSuggestion, ParkingSpot } from "@/lib/overpass";
 import { useGeolocation } from "@/hooks/useGeolocation";
 
-type Filter = "all" | "free" | "paid";
+type Filter = "all" | "free" | "paid" | "disabled";
 
 const SESSION_KEY = "parcheggi_state";
 
@@ -237,12 +237,14 @@ export default function App() {
     if (filter === "all") return true;
     if (filter === "free") return s.fee === "free";
     if (filter === "paid") return s.fee === "paid";
+    if (filter === "disabled") return s.disabled;
     return true;
   });
 
   const isLoading = loading || geoLoading;
 
   const freeCount = spots.filter((s) => s.fee === "free").length;
+  const disabledCount = spots.filter((s) => s.disabled).length;
   const paidCount = spots.filter((s) => s.fee === "paid").length;
   const openCount = spots.filter((s) => s.available === "open").length;
 
@@ -282,16 +284,17 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", gap: "4px" }}>
-              {(["all", "free", "paid"] as Filter[]).map((f) => {
-                const labels = { all: "Tutti", free: "Gratis", paid: "Pagamento" };
+              {(["all", "free", "paid", "disabled"] as Filter[]).map((f) => {
+                const labels = { all: "Tutti", free: "Gratis", paid: "Pagamento", disabled: "♿" };
                 const colors = {
                   all: { active: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
                   free: { active: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
                   paid: { active: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+                  disabled: { active: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
                 };
                 const c = colors[f];
                 const isActive = filter === f;
-                const count = f === "all" ? spots.length : f === "free" ? freeCount : paidCount;
+                const count = f === "all" ? spots.length : f === "free" ? freeCount : f === "paid" ? paidCount : disabledCount;
                 return (
                   <button
                     key={f}
@@ -390,7 +393,7 @@ export default function App() {
                     placeholder="Indirizzo o città..."
                     style={{
                       width: "100%",
-                      padding: "9px 10px",
+                      padding: query ? "9px 30px 9px 10px" : "9px 10px",
                       borderRadius: "10px",
                       border: "1.5px solid #e2e8f0",
                       fontSize: "14px",
@@ -400,6 +403,23 @@ export default function App() {
                       boxSizing: "border-box",
                     }}
                   />
+                  {query && (
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); setQuery(""); setSuggestions([]); setShowSuggestions(false); inputRef.current?.focus(); }}
+                      style={{
+                        position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)",
+                        background: "#94a3b8", border: "none", borderRadius: "50%",
+                        width: "16px", height: "16px", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        padding: 0, flexShrink: 0,
+                      }}
+                      title="Cancella"
+                    >
+                      <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                        <line x1="1" y1="1" x2="9" y2="9"/><line x1="9" y1="1" x2="1" y2="9"/>
+                      </svg>
+                    </button>
+                  )}
                   {showSuggestions && dropdownItems.length > 0 && (
                     <SearchDropdown
                       items={dropdownItems}
@@ -460,16 +480,17 @@ export default function App() {
 
             <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
               <span style={{ fontSize: "11px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>Filtro:</span>
-              {(["all", "free", "paid"] as Filter[]).map((f) => {
-                const labels = { all: "Tutti", free: "Gratuiti", paid: "A pagamento" };
+              {(["all", "free", "paid", "disabled"] as Filter[]).map((f) => {
+                const labels = { all: "Tutti", free: "Gratuiti", paid: "A pagamento", disabled: "♿ Disabili" };
                 const colors = {
                   all: { active: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
                   free: { active: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
                   paid: { active: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+                  disabled: { active: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
                 };
                 const c = colors[f];
                 const isActive = filter === f;
-                const count = f === "all" ? spots.length : f === "free" ? freeCount : paidCount;
+                const count = f === "all" ? spots.length : f === "free" ? freeCount : f === "paid" ? paidCount : disabledCount;
                 return (
                   <button
                     key={f}
@@ -569,6 +590,7 @@ export default function App() {
             { color: "#16a34a", label: "Gratuito" },
             { color: "#d97706", label: "A pagamento" },
             { color: "#64748b", label: "Non specificato" },
+            { color: "#2563eb", label: "♿ Disabili" },
           ].map(({ color, label }) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "4px" }}>
               <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: color, flexShrink: 0 }} />
