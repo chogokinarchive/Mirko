@@ -193,35 +193,6 @@ export interface GeoSuggestion {
 
 export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
   if (query.trim().length < 3) return [];
-  // Try Photon
-  try {
-    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=it`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.features?.length) {
-        return data.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => {
-          const [lng, lat] = f.geometry.coordinates;
-          const p = f.properties;
-          return { display: [p.name, p.street, p.city, p.country].filter(Boolean).join(", "), lat, lng };
-        });
-      }
-    }
-  } catch { /* fallback */ }
-  // Fallback: Nominatim
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&accept-language=it`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return (data || []).map((d: { lat: string; lon: string; display_name: string }) => ({
-      lat: parseFloat(d.lat), lng: parseFloat(d.lon), display: d.display_name,
-    }));
-  } catch { return []; }
-}
-
-export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
-  if (query.trim().length < 3) return [];
   try {
     const r = await fetch(`/api/geocode?q=${encodeURIComponent(query)}&limit=5`, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) return [];
