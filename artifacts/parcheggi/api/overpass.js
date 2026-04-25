@@ -26,7 +26,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `data=${encodeURIComponent(queryData)}`,
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(15000),
       });
 
       if (response.ok) {
