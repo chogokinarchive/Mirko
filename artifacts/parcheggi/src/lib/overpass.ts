@@ -1,3 +1,5 @@
+// ─── Tipi ────────────────────────────────────────────────────────────────────
+
 export interface ParkingSpot {
   id: string;
   lat: number;
@@ -5,16 +7,24 @@ export interface ParkingSpot {
   name: string;
   fee: "free" | "paid" | "unknown";
   available: "open" | "closed" | "unknown";
+  disabled: boolean;
   capacity?: string;
+  capacity_disabled?: string;
   access?: string;
   surface?: string;
   maxstay?: string;
   operator?: string;
   opening_hours?: string;
   type: "node" | "way" | "relation";
-  disabled: boolean;
-  capacity_disabled?: string;
 }
+
+export interface GeoSuggestion {
+  display: string;
+  lat: number;
+  lng: number;
+}
+
+// ─── Helpers interni ─────────────────────────────────────────────────────────
 
 function parseFee(tags: Record<string, string>): "free" | "paid" | "unknown" {
   const fee = tags["fee"] || tags["parking:fee"];
@@ -25,30 +35,19 @@ function parseFee(tags: Record<string, string>): "free" | "paid" | "unknown" {
 }
 
 function parseName(tags: Record<string, string>, id: string): string {
-  return (
-    tags["name"] ||
-    tags["operator"] ||
-    tags["brand"] ||
-    `Parcheggio #${id.slice(-4)}`
-  );
+  return tags["name"] || tags["operator"] || tags["brand"] || `Parcheggio #${id.slice(-4)}`;
 }
 
-
 function parseDisabled(tags: Record<string, string>): boolean {
-  // Dedicated disabled parking spot
-  if (tags["amenity"] === "parking" && tags["access"] === "disabled") return true;
+  if (tags["access"] === "disabled") return true;
   if (tags["parking"] === "disabled") return true;
-  // Has disabled capacity
   const cap = tags["capacity:disabled"] || tags["disabled:capacity"] || tags["capacity:handicapped"];
   if (cap && cap !== "0") return true;
-  // Wheelchair accessible tag
   if (tags["wheelchair"] === "yes" || tags["wheelchair"] === "designated") return true;
   return false;
 }
 
-const DAYS: Record<string, number> = {
-  Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6, Su: 0,
-};
+const DAYS: Record<string, number> = { Mo: 1, Tu: 2, We: 3, Th: 4, Fr: 5, Sa: 6, Su: 0 };
 
 function parseTime(s: string): number {
   const [h, m] = s.split(":").map(Number);
@@ -56,15 +55,11 @@ function parseTime(s: string): number {
 }
 
 function dayRange(from: string, to: string): number[] {
-  const start = DAYS[from];
-  const end = DAYS[to];
+  const start = DAYS[from], end = DAYS[to];
   if (start === undefined || end === undefined) return [];
   const days: number[] = [];
   let cur = start;
-  while (cur !== end) {
-    days.push(cur);
-    cur = (cur + 1) % 7;
-  }
+  while (cur !== end) { days.push(cur); cur = (cur + 1) % 7; }
   days.push(end);
   return days;
 }
@@ -72,7 +67,6 @@ function dayRange(from: string, to: string): number[] {
 export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
   if (!oh) return "unknown";
   const raw = oh.trim().toLowerCase();
-
   if (raw === "24/7" || raw === "00:00-24:00" || raw === "always") return "open";
   if (raw === "closed" || raw === "off") return "closed";
 
@@ -80,48 +74,22 @@ export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
   const nowDay = now.getDay();
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  const rules = oh.split(";").map((r) => r.trim());
-
-  for (const rule of rules) {
-    const allDayMatch = rule.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?\s+(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+off)?/);
-    if (allDayMatch) {
-      const [, fromDay, toDay, fromTime, toTime] = allDayMatch;
-      const isOff = rule.includes(" off");
-      const days = toDay ? dayRange(fromDay, toDay) : [DAYS[fromDay]];
+  for (const rule of oh.split(";").map(r => r.trim())) {
+    const m = rule.match(/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))?\s+(\d{2}:\d{2})-(\d{2}:\d{2})(?:\s+off)?/);
+    if (m) {
+      const days = m[2] ? dayRange(m[1], m[2]) : [DAYS[m[1]]];
       if (!days.includes(nowDay)) continue;
-      const start = parseTime(fromTime);
-      const end = parseTime(toTime);
-      if (nowMin >= start && nowMin < end) {
-        return isOff ? "closed" : "open";
-      }
+      const start = parseTime(m[3]), end = parseTime(m[4]);
+      if (nowMin >= start && nowMin < end) return m[0].includes(" off") ? "closed" : "open";
       continue;
     }
-
-    const timeOnly = rule.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-    if (timeOnly) {
-      const start = parseTime(timeOnly[1]);
-      const end = parseTime(timeOnly[2]);
-      if (nowMin >= start && nowMin < end) return "open";
-    }
+    const t = rule.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    if (t && nowMin >= parseTime(t[1]) && nowMin < parseTime(t[2])) return "open";
   }
-
   return "unknown";
 }
 
-async function fetchOverpass(overpassQuery: string): Promise<Response> {
-  // Usa il proxy Vercel per evitare problemi CORS
-  const response = await fetch("/api/overpass", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: overpassQuery }),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: `Errore server: ${response.status}` }));
-    throw new Error(err.error || "Errore nel recupero dei dati.");
-  }
-  return response;
-}
+// ─── Overpass (tramite proxy Vercel /api/overpass) ───────────────────────────
 
 export async function searchParkings(
   lat: number,
@@ -138,7 +106,18 @@ export async function searchParkings(
 out center tags;
 `;
 
-  const response = await fetchOverpass(query);
+  const response = await fetch("/api/overpass", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: query }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || "Errore nel recupero dei dati. Riprova.");
+  }
+
   const data = await response.json();
   const spots: ParkingSpot[] = [];
 
@@ -147,54 +126,47 @@ out center tags;
     let elLng: number | undefined;
 
     if (element.type === "node") {
-      elLat = element.lat;
-      elLng = element.lon;
+      elLat = element.lat; elLng = element.lon;
     } else if (element.center) {
-      elLat = element.center.lat;
-      elLng = element.center.lon;
+      elLat = element.center.lat; elLng = element.center.lon;
     }
-
     if (elLat === undefined || elLng === undefined) continue;
 
     const tags: Record<string, string> = element.tags || {};
     const oh = tags["opening_hours"] || tags["parking:opening_hours"] || "";
     const access = tags["access"] || "";
-
     let available: "open" | "closed" | "unknown" = parseOpeningHours(oh);
     if (access === "private" || access === "no") available = "closed";
 
     spots.push({
       id: `${element.type}_${element.id}`,
-      lat: elLat,
-      lng: elLng,
+      lat: elLat, lng: elLng,
       name: parseName(tags, String(element.id)),
       fee: parseFee(tags),
       available,
+      disabled: parseDisabled(tags),
       capacity: tags["capacity"],
+      capacity_disabled: tags["capacity:disabled"] || tags["capacity:handicapped"] || undefined,
       access,
       surface: tags["surface"],
       maxstay: tags["maxstay"],
       operator: tags["operator"],
       opening_hours: oh || undefined,
       type: element.type,
-      disabled: parseDisabled(tags),
-      capacity_disabled: tags["capacity:disabled"] || tags["disabled:capacity"] || tags["capacity:handicapped"] || undefined,
     });
   }
 
   return spots;
 }
 
-export interface GeoSuggestion {
-  display: string;
-  lat: number;
-  lng: number;
-}
+// ─── Geocodifica (tramite proxy Vercel /api/geocode) ─────────────────────────
 
 export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> {
   if (query.trim().length < 3) return [];
   try {
-    const r = await fetch(`/api/geocode?q=${encodeURIComponent(query)}&limit=5`, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`/api/geocode?q=${encodeURIComponent(query)}&limit=5`, {
+      signal: AbortSignal.timeout(8000),
+    });
     if (!r.ok) return [];
     const data = await r.json();
     if (!data?.features?.length) return [];
@@ -209,7 +181,9 @@ export async function fetchSuggestions(query: string): Promise<GeoSuggestion[]> 
 export async function geocodeAddress(
   address: string
 ): Promise<{ lat: number; lng: number; display: string } | null> {
-  const r = await fetch(`/api/geocode?q=${encodeURIComponent(address)}&limit=1`, { signal: AbortSignal.timeout(10000) });
+  const r = await fetch(`/api/geocode?q=${encodeURIComponent(address)}&limit=1`, {
+    signal: AbortSignal.timeout(10000),
+  });
   if (!r.ok) throw new Error("Servizio di ricerca non disponibile. Riprova.");
   const data = await r.json();
   if (!data?.features?.length) return null;
