@@ -12,8 +12,8 @@ export default async function handler(req, res) {
 
   if (!queryData) return res.status(400).json({ error: "Missing query data" });
 
-  const endpoints = [
-    "https://overpass-api.de/api/interpreter",
+ const endpoints = [
+  "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
   ];
