@@ -45,3 +45,7 @@ export default async function handler(req, res) {
 
   return res.status(503).json({ error: lastError });
 }
+// AGGIUNGI QUESTO BLOCO NEL TUO FILE
+export const config = {
+  maxDuration: 10,
+};
