@@ -89,7 +89,27 @@ export function parseOpeningHours(oh: string): "open" | "closed" | "unknown" {
   return "unknown";
 }
 
-// ─── Overpass (tramite proxy Vercel /api/overpass) ───────────────────────────
+// ─── Overpass: proxy Vercel + fallback diretto dal browser ──────────────────
+
+const DIRECT_ENDPOINTS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+];
+
+async function fetchOverpassDirect(q: string): Promise<Response> {
+  for (const endpoint of DIRECT_ENDPOINTS) {
+    try {
+      const r = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(q)}`,
+        signal: AbortSignal.timeout(8000),
+      });
+      if (r.ok) return r;
+    } catch { continue; }
+  }
+  throw new Error("Nessun server disponibile. Riprova tra qualche secondo.");
+}
 
 export async function searchParkings(
   lat: number,
@@ -106,16 +126,21 @@ export async function searchParkings(
 out center tags;
 `;
 
-  const response = await fetch("/api/overpass", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: query }),
-    signal: AbortSignal.timeout(30000),
-  });
+  // Prima prova il proxy Vercel
+  let response: Response | null = null;
+  try {
+    const r = await fetch("/api/overpass", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: query }),
+      signal: AbortSignal.timeout(9000),
+    });
+    if (r.ok) response = r;
+  } catch { /* fallback */ }
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error || "Errore nel recupero dei dati. Riprova.");
+  // Se il proxy fallisce, prova direttamente dal browser
+  if (!response) {
+    response = await fetchOverpassDirect(query);
   }
 
   const data = await response.json();
