@@ -97,11 +97,10 @@ export async function searchParkings(
   radiusMeters: number = 1000
 ): Promise<ParkingSpot[]> {
   const query = `
-[out:json][timeout:25];
+[out:json][timeout:7];
 (
   node["amenity"="parking"](around:${radiusMeters},${lat},${lng});
   way["amenity"="parking"](around:${radiusMeters},${lat},${lng});
-  relation["amenity"="parking"](around:${radiusMeters},${lat},${lng});
 );
 out center tags;
 `;
