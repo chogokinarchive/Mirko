@@ -1,3 +1,12 @@
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "1mb",
+    },
+  },
+  maxDuration: 30,
+};
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -12,8 +21,8 @@ export default async function handler(req, res) {
 
   if (!queryData) return res.status(400).json({ error: "Missing query data" });
 
- const endpoints = [
-  "https://overpass-api.de/api/interpreter",
+  const endpoints = [
+    "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
   ];
@@ -26,7 +35,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `data=${encodeURIComponent(queryData)}`,
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(25000),
       });
 
       if (response.ok) {
@@ -45,7 +54,3 @@ export default async function handler(req, res) {
 
   return res.status(503).json({ error: lastError });
 }
-// AGGIUNGI QUESTO BLOCO NEL TUO FILE
-export const config = {
-  maxDuration: 10,
-};
