@@ -4,7 +4,7 @@ export const config = {
       sizeLimit: "1mb",
     },
   },
-  maxDuration: 30,
+  maxDuration: 10,
 };
 
 export default async function handler(req, res) {
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `data=${encodeURIComponent(queryData)}`,
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(7000),
       });
 
       if (response.ok) {
@@ -49,6 +49,7 @@ export default async function handler(req, res) {
         : `Errore server: ${response.status}`;
     } catch {
       lastError = "Connessione al servizio fallita.";
+      continue;
     }
   }
 
