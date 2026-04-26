@@ -25,17 +25,19 @@ export default async function handler(req, res) {
     "https://overpass.openstreetmap.ru/api/interpreter",
   ];
 
-  // Prova tutti in parallelo, usa il primo che risponde
-  const body = `data=${encodeURIComponent(queryData)}`;
-  const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+  const fetchHeaders = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "User-Agent": "ParcheggiApp/1.0 (https://mirko-parcheggi.vercel.app; parking finder app)",
+    "Referer": "https://mirko-parcheggi.vercel.app",
+  };
 
   try {
     const result = await Promise.any(
       endpoints.map(endpoint =>
         fetch(endpoint, {
           method: "POST",
-          headers,
-          body,
+          headers: fetchHeaders,
+          body: `data=${encodeURIComponent(queryData)}`,
           signal: AbortSignal.timeout(8000),
         }).then(r => {
           if (!r.ok) throw new Error(`${r.status}`);
@@ -45,9 +47,9 @@ export default async function handler(req, res) {
     );
 
     const data = await result.json();
-    res.setHeader("Cache-Control", "s-maxage=60");
+    res.setHeader("Cache-Control", "s-maxage=120");
     return res.status(200).json(data);
-  } catch {
-    return res.status(503).json({ error: "Tutti i server Overpass non disponibili. Riprova tra qualche secondo." });
+  } catch (e) {
+    return res.status(503).json({ error: "Server parcheggi non disponibili. Riprova tra qualche secondo." });
   }
 }
