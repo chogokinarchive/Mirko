@@ -1,9 +1,5 @@
 export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "1mb",
-    },
-  },
+  api: { bodyParser: { sizeLimit: "1mb" } },
   maxDuration: 10,
 };
 
@@ -23,35 +19,35 @@ export default async function handler(req, res) {
 
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
   ];
 
-  let lastError = "Tutti i server Overpass non disponibili.";
+  // Prova tutti in parallelo, usa il primo che risponde
+  const body = `data=${encodeURIComponent(queryData)}`;
+  const headers = { "Content-Type": "application/x-www-form-urlencoded" };
 
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(queryData)}`,
-        signal: AbortSignal.timeout(7000),
-      });
+  try {
+    const result = await Promise.any(
+      endpoints.map(endpoint =>
+        fetch(endpoint, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(8000),
+        }).then(r => {
+          if (!r.ok) throw new Error(`${r.status}`);
+          return r;
+        })
+      )
+    );
 
-      if (response.ok) {
-        const data = await response.json();
-        res.setHeader("Cache-Control", "s-maxage=60");
-        return res.status(200).json(data);
-      }
-
-      lastError = response.status === 429 || response.status === 503
-        ? "Servizi sovraccarichi, riprova tra qualche secondo."
-        : `Errore server: ${response.status}`;
-    } catch {
-      lastError = "Connessione al servizio fallita.";
-      continue;
-    }
+    const data = await result.json();
+    res.setHeader("Cache-Control", "s-maxage=60");
+    return res.status(200).json(data);
+  } catch {
+    return res.status(503).json({ error: "Tutti i server Overpass non disponibili. Riprova tra qualche secondo." });
   }
-
-  return res.status(503).json({ error: lastError });
 }
